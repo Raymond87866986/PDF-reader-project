@@ -22,7 +22,7 @@ public class MainActivity extends AppCompatActivity {
     Button btnAddPdf;
     ListView pdfListView;
     ArrayList<String> pdfNames = new ArrayList<>();
-    ArrayList<String> pdfInternalPaths = new ArrayList<>(); // مسیرهای داخلی
+    ArrayList<String> pdfInternalPaths = new ArrayList<>();
     ArrayAdapter<String> adapter;
 
     private static final int PICK_PDF_REQUEST = 1;
@@ -208,7 +208,7 @@ public class PdfViewerActivity extends AppCompatActivity {
             intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
 
-            // بررسی برنامه‌های موجود
+            
             if (intent.resolveActivity(getPackageManager()) != null) {
                 startActivity(intent);
                 finish();
@@ -231,4 +231,5 @@ public class PdfViewerActivity extends AppCompatActivity {
                 .setCancelable(false)
                 .show();
     }
+
 }
