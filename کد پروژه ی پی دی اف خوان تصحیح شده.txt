@@ -1,0 +1,234 @@
+package com.example.pdf;
+
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Environment;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.ListView;
+import android.widget.Toast;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.util.ArrayList;
+
+public class MainActivity extends AppCompatActivity {
+
+    Button btnAddPdf;
+    ListView pdfListView;
+    ArrayList<String> pdfNames = new ArrayList<>();
+    ArrayList<String> pdfInternalPaths = new ArrayList<>(); // مسیرهای داخلی
+    ArrayAdapter<String> adapter;
+
+    private static final int PICK_PDF_REQUEST = 1;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        btnAddPdf = findViewById(R.id.btnAddPdf);
+        pdfListView = findViewById(R.id.pdfListView);
+
+        adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, pdfNames);
+        pdfListView.setAdapter(adapter);
+
+        btnAddPdf.setOnClickListener(v -> openFilePicker());
+
+        pdfListView.setOnItemClickListener((parent, view, position, id) -> {
+            String internalPath = pdfInternalPaths.get(position);
+            Intent intent = new Intent(MainActivity.this, PdfViewerActivity.class);
+            intent.putExtra("pdfPath", internalPath);
+            startActivity(intent);
+        });
+
+        
+        loadExistingFiles();
+    }
+
+    private void openFilePicker() {
+        try {
+            
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.setType("*/*");
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+            
+            Intent chooser = Intent.createChooser(intent, "فایل PDF را انتخاب کنید");
+            startActivityForResult(chooser, PICK_PDF_REQUEST);
+
+        } catch (Exception e) {
+            Toast.makeText(this, "خطا: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == PICK_PDF_REQUEST && resultCode == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri != null) {
+                copyFileToInternalStorage(uri);
+            }
+        }
+    }
+
+    private void copyFileToInternalStorage(Uri uri) {
+        try {
+           
+            String fileName = getFileName(uri);
+            if (fileName == null) {
+                fileName = "document_" + System.currentTimeMillis() + ".pdf";
+            }
+
+            
+            if (!fileName.toLowerCase().endsWith(".pdf")) {
+                fileName += ".pdf";
+            }
+
+            
+            InputStream inputStream = getContentResolver().openInputStream(uri);
+            File internalFile = new File(getFilesDir(), fileName);
+
+            FileOutputStream outputStream = new FileOutputStream(internalFile);
+            byte[] buffer = new byte[1024];
+            int read;
+            while ((read = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, read);
+            }
+
+            inputStream.close();
+            outputStream.close();
+
+            
+            if (!pdfNames.contains(fileName)) {
+                pdfNames.add(fileName);
+                pdfInternalPaths.add(internalFile.getAbsolutePath());
+                adapter.notifyDataSetChanged();
+                Toast.makeText(this, "فایل اضافه شد: " + fileName, Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "این فایل قبلاً اضافه شده است", Toast.LENGTH_SHORT).show();
+            }
+
+        } catch (Exception e) {
+            Toast.makeText(this, "خطا در کپی فایل: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String getFileName(Uri uri) {
+        try {
+            String result = null;
+            if (uri.getScheme().equals("content")) {
+                android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+                try {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        int nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                        if (nameIndex != -1) {
+                            result = cursor.getString(nameIndex);
+                        }
+                    }
+                } finally {
+                    if (cursor != null) {
+                        cursor.close();
+                    }
+                }
+            }
+            if (result == null) {
+                result = uri.getLastPathSegment();
+            }
+            return result;
+        } catch (Exception e) {
+            return "document_" + System.currentTimeMillis() + ".pdf";
+        }
+    }
+
+    private void loadExistingFiles() {
+        
+        File internalDir = getFilesDir();
+        File[] files = internalDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".pdf"));
+
+        if (files != null) {
+            for (File file : files) {
+                pdfNames.add(file.getName());
+                pdfInternalPaths.add(file.getAbsolutePath());
+            }
+            adapter.notifyDataSetChanged();
+        }
+    }
+}
+
+
+
+package com.example.pdf;
+
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.content.Intent;
+import android.net.Uri;
+import android.os.Bundle;
+import android.widget.Toast;
+
+import java.io.File;
+
+public class PdfViewerActivity extends AppCompatActivity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        String pdfPath = getIntent().getStringExtra("pdfPath");
+        if (pdfPath != null && new File(pdfPath).exists()) {
+            openPdfWithExternalApp(pdfPath);
+        } else {
+            Toast.makeText(this, "فایل PDF یافت نشد", Toast.LENGTH_SHORT).show();
+            finish();
+        }
+    }
+
+    private void openPdfWithExternalApp(String pdfPath) {
+        try {
+            File pdfFile = new File(pdfPath);
+
+            
+            Uri pdfUri = androidx.core.content.FileProvider.getUriForFile(
+                    this,
+                    getPackageName() + ".fileprovider",
+                    pdfFile
+            );
+
+           
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(pdfUri, "application/pdf");
+            intent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            // بررسی برنامه‌های موجود
+            if (intent.resolveActivity(getPackageManager()) != null) {
+                startActivity(intent);
+                finish();
+            } else {
+                
+                showNoPdfAppDialog();
+            }
+
+        } catch (Exception e) {
+            Toast.makeText(this, "خطا در باز کردن فایل: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            finish();
+        }
+    }
+
+    private void showNoPdfAppDialog() {
+        androidx.appcompat.app.AlertDialog.Builder builder = new androidx.appcompat.app.AlertDialog.Builder(this);
+        builder.setTitle("برنامه PDF خوان یافت نشد")
+                .setMessage("لطفاً یک برنامه PDF خوان مانند Adobe Acrobat یا Google PDF Viewer نصب کنید.")
+                .setPositiveButton("باشه", (dialog, which) -> finish())
+                .setCancelable(false)
+                .show();
+    }
+}
